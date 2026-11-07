@@ -1,6 +1,6 @@
 // 마음 한 걸음 – service worker
 // 버전을 올리면 이전 캐시가 정리돼요. 정적 파일을 바꿔 배포할 때마다 올려 주세요.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `shell-${VERSION}`;
 const RUNTIME = `runtime-${VERSION}`;
 const PRECACHE = [

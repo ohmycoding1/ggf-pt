@@ -797,15 +797,15 @@ function vMission(){const d=D(),v=document.getElementById('v'),walk=isWalkDay(),
   <p class="note">불편하면 바로 멈추고, 편안한 범위에서만 움직여요.</p>
   ${d.start&&!d.done?`<button class="btn ghost block sm" onclick="giveUp()">오늘은 쉬어갈래요 (Lv −1)</button>`:''}
  </section>
- ${d.start&&workDone&&!chatOk?`<section class="card" id="counsel">
-  <div class="card-h"><h2>마음 상담</h2><span class="pill accent">Step 3</span></div>
+ ${d.start&&workDone&&!d.done?`<section class="card" id="counsel">
+  <div class="card-h"><h2>마음 상담</h2><span class="pill ${chatOk?'':'accent'}">${chatOk?'미션 달성 ✔':'Step 3'}</span></div>
   <p class="notice">AI가 감정을 정리하고 다음 질문을 함께 찾아요. 메시지는 답변 생성을 위해 Anthropic Claude API로 전송되니 이름·연락처 같은 민감한 정보는 적지 마세요. 전문 상담이나 진료를 대신하지 않아요.</p>
   <div id="chat" class="chat"></div>
   <div class="composer"><input id="ci" placeholder="오늘 기분이나 생각을 편하게 적어보세요" enterkeyhint="send" onkeydown="if(event.key==='Enter'&&!event.isComposing)send()"><button id="sendBtn" class="btn primary icon" onclick="send()" aria-label="보내기">${IC.send}</button></div>
  </section>`:''}
  ${d.start&&workDone&&chatOk&&walkOk&&!d.done?`<button class="btn primary block lg glow" onclick="finish()">🎉 미션 완료하고 보상 받기</button>`:''}
  ${d.done?`<section class="card done-card"><div class="done-ic">${IC.check}</div><b>오늘 미션 완료!</b><p class="mu">내일 또 만나요. 보물 지도에서 산책하면 경험치를 더 얻어요.</p></section>`:''}`;
- if(d.start&&workDone&&!chatOk)chatInit()}
+ if(d.start&&workDone&&!d.done)chatInit()}
 function vAvatar(){const v=document.getElementById('v');
  v.innerHTML=`<header class="page-h"><h1>내 캐릭터</h1><p class="mu">구매한 파츠를 골라 입혀 보세요</p></header>
  <section class="card avatar-card">
@@ -823,28 +823,60 @@ function vAvatar(){const v=document.getElementById('v');
  renderLayerControls();
  const st=document.getElementById('layerStatus');if(st&&layerPack){const n=Object.values(layerPack.slots).reduce((a,b)=>a+b.length,0);st.textContent=`레이어 순서: 기본 몸 → 옷 → 헤어 → 표정 → 액세서리 · 전체 파츠 ${n}개`}}
 function startM(){D().start=1;save();R()}
-function openWorkout(){const d=D();if(!d.start){d.start=1;save()}woMount();}
+function openWorkout(){audioUnlock();const d=D();if(!d.start){d.start=1;save()}woMount();}
 function giveUp(){if(!confirm('포기하면 레벨이 1 내려가요. 괜찮을까요?'))return;D().done=1;D().gave=1;loseLv(1);save();stopCam();R(['괜찮아요. 내일 다시 해봐요. 오늘 여기까지 온 것도 대단해요.'])}
 function finish(){const d=D();d.done=1;S.gold+=100;addXp(60);save();R(['미션 완료! +100G, +60EXP'])}
 // ===== 카메라 운동 인식 (관절 실시간 표시) =====
 let PL=null,HL=null,VM=null,VL=null,handInfo=null,raf=null,lastT=0,X={i:-2,s:-1,t:0,n:0,l:-9},SM=null,voiceLast='',voiceAt=0;let voiceCoach=true;try{voiceCoach=localStorage.getItem('rehab_voice')!=='0'}catch(e){}
 const setMsg=t=>{const s=document.getElementById('cs');if(s)s.textContent=t};
-const WARM=['손목 돌리기'];
-const cur=()=>{const d=D(),w=d.warm||[];const i=d.ex.findIndex((s,k)=>s<d.tg[k]);if(i<0)return null;const p=POOL.find(q=>q.id===d.ids[i]);return{i,p,n:p.n,t:d.tg[i],h:p.h,c:d.ex[i]}};
+// 준비 운동: 손가락 인식(손목 돌리기). 본 운동을 시작하기 전에만 나와요.
+const WARM=[{n:'손목 돌리기',t:5,h:'두 손바닥을 카메라 쪽으로 활짝 펴고, 손바닥과 손등이 번갈아 보이도록 손목을 천천히 돌려요.'}];
+const warmLeft=d=>!d.done&&d.ex.every(x=>!x)&&WARM.some((w,i)=>((d.warm||[])[i]||0)<w.t);
+const cur=()=>{const d=D(),w=d.warm||[];
+ if(warmLeft(d)){const i=WARM.findIndex((x,k)=>(w[k]||0)<x.t),W=WARM[i];return{i,warm:1,key:'w'+i,p:{id:'warm'+i,h:W.h,hand:i===0},n:W.n,t:W.t,h:W.h,c:w[i]||0}}
+ const i=d.ex.findIndex((s,k)=>s<d.tg[k]);if(i<0)return null;const p=POOL.find(q=>q.id===d.ids[i]);return{i,key:'e'+i,p,n:p.n,t:d.tg[i],h:p.h,c:d.ex[i]}};
+function skipWarm(){const d=D();d.warm=WARM.map(w=>w.t);save();toast('준비 운동을 건너뛰었어요');showRc();const e=cur();if(e&&voiceCoach)speakNow(e.n+'. '+e.h)}
+// ===== 소리·진동·카운트다운 =====
+let AC=null;
+function audioUnlock(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume()}catch(e){}}
+function beep(f,d){if(!AC)return;try{const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d+.03)}catch(e){}}
+const vib=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
+const KN=['영','하나','둘','셋','넷','다섯','여섯','일곱','여덟','아홉','열','열하나','열둘','열셋','열넷','열다섯','열여섯','열일곱','열여덟','열아홉','스물'];
+function speakNow(text){if(!voiceCoach||!text||!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=1;voiceLast=text;voiceAt=Date.now();speechSynthesis.speak(u)}
+function repFx(c,last){beep(last?880:740,last?.22:.1);vib(last?[80,60,160]:60);
+ const b=document.getElementById('woNum');if(b){b.classList.remove('bump');void b.offsetWidth;b.classList.add('bump')}
+ if(!last)speakNow(KN[c]||String(c))}
+// 자세 확인 → 3·2·1 카운트다운 → 횟수 세기
+let G={key:'',ph:'pos',ok:0,cd:0,last:-1};
+function cdShow(t){const c=document.getElementById('woCd');if(c)c.innerHTML=t===''?'':`<b class="${typeof t==='number'?'':'go'}">${t}</b>`}
+function frameState(s){const w=document.getElementById('vw');if(!w)return;w.classList.toggle('pos-ok',s==='ok');w.classList.toggle('pos-bad',s==='bad')}
+function gateReset(e){G={key:e?e.key:'',ph:'pos',ok:0,cd:0,last:-1};X={k:G.key,s:-1,t:0,n:0,l:-9,phaseAt:0};cdShow('');frameState('')}
+function gateMiss(){if(G.ph==='go')return;if(G.ph==='cd'){G.ph='pos';cdShow('');beep(330,.15)}G.ok=0;frameState('bad')}
+function gatePass(n){if(G.ph==='go')return true;
+ if(document.getElementById('woGuide')?.classList.contains('show')){G.ok=0;if(G.ph==='cd'){G.ph='pos';cdShow('')}return false}
+ frameState('ok');
+ if(G.ph==='pos'){
+  if(voiceCoach&&'speechSynthesis'in window&&speechSynthesis.speaking){G.ok=0;setMsg('안내를 듣고 자리를 잡아 주세요.');return false}
+  if(!G.ok)G.ok=n;if(n-G.ok<800){setMsg('좋아요! 그대로 잠깐 멈춰 주세요.');return false}
+  G.ph='cd';G.cd=n;G.last=-1}
+ const k=3-Math.floor((n-G.cd)/1000);
+ if(k>0){if(k!==G.last){G.last=k;cdShow(k);beep(660,.12);vib(40);speakNow(KN[k])}setMsg('자세 확인 완료! 곧 시작해요');return false}
+ G.ph='go';cdShow('시작!');beep(990,.3);vib(150);speakNow('시작!');setTimeout(()=>{if(G.ph==='go')cdShow('')},800);frameState('');return true}
 function demoTick(){const e=cur();if(!e)return;tick(1);setMsg('데모 모드 · '+e.n+' +1회');}
-function toggleCoach(){voiceCoach=!voiceCoach;try{localStorage.setItem('rehab_voice',voiceCoach?'1':'0')}catch(e){}
+function toggleCoach(){audioUnlock();voiceCoach=!voiceCoach;try{localStorage.setItem('rehab_voice',voiceCoach?'1':'0')}catch(e){}
  if(!voiceCoach&&('speechSynthesis'in window))speechSynthesis.cancel();coachBtn();
  if(voiceCoach)sayCoach('음성 안내를 켰어요. 자세를 차근차근 안내할게요.');else{toast('음성 안내를 껐어요. 안내문을 읽고 따라 해 주세요.');openGuide()}}
 function sayCoach(text){if(!voiceCoach||!text||!('speechSynthesis'in window))return;const now=Date.now();if(text===voiceLast&&now-voiceAt<4500)return;if(now-voiceAt<1300)return;voiceLast=text;voiceAt=now;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=.92;u.pitch=1.02;speechSynthesis.speak(u)}
 function showRc(){const e=cur(),d=D(),EX=EXl(),set=(id,t)=>{const x=document.getElementById(id);if(x)x.textContent=t};
  if(!e)return;
  set('woName',e.n);set('woNum',Math.floor(e.c));set('woTgt','/'+e.t+'회');
- set('hint',e.h);set('woNeed',e.p.arm?'옆모습·팔이 보여야 해요':e.p.low?'발끝까지 전신이 보여야 해요':e.p.hip?'허리까지 보여야 해요':'상체만 보여도 돼요');
- const seg=document.getElementById('woSeg');if(seg)seg.innerHTML=EX.map((x,i)=>`<i class="${d.ex[i]>=x[1]?'done':i===e.i?'on':''}"><b style="width:${Math.min(100,d.ex[i]/x[1]*100)}%"></b></i>`).join('');
+ set('hint',e.h);set('woNeed',e.p.hand?'두 손이 화면에 보여야 해요':e.p.arm?'옆모습·팔이 보여야 해요':e.p.low?'발끝까지 전신이 보여야 해요':e.p.hip?'허리까지 보여야 해요':'상체만 보여도 돼요');
+ const sk=document.getElementById('woSkip');if(sk)sk.hidden=!e.warm;const wl=warmLeft(d);
+ const seg=document.getElementById('woSeg');if(seg)seg.innerHTML=WARM.map((x,i)=>`<i class="${!wl?'done':e.warm&&i===e.i?'on':''}"><b style="width:${Math.min(100,((d.warm||[])[i]||0)/x.t*100)}%"></b></i>`).join('')+EX.map((x,i)=>`<i class="${d.ex[i]>=x[1]?'done':!e.warm&&i===e.i?'on':''}"><b style="width:${Math.min(100,d.ex[i]/x[1]*100)}%"></b></i>`).join('');
  const g=document.getElementById('woGuide');if(g&&g.classList.contains('show'))fillGuide()}
 function woMount(){if(document.getElementById('wo'))return;const e=cur();if(!e){R();return}
  const w=document.createElement('section');w.id='wo';w.className='wo';w.setAttribute('role','dialog');w.setAttribute('aria-label','동작 인식 운동');
- w.innerHTML=`<div class="vw" id="vw"><video id="vid" playsinline muted autoplay></video><canvas id="ov" class="ov"></canvas>
+ w.innerHTML=`<div class="vw" id="vw"><video id="vid" playsinline muted autoplay></video><canvas id="ov" class="ov"></canvas><div class="wo-cd" id="woCd" aria-live="assertive"></div>
   <div class="vw-empty" id="woEmpty">${IC.cam}<span>카메라를 준비하고 있어요</span></div></div>
  <canvas id="tmp" width="64" height="48" class="hide"></canvas>
  <header class="wo-top">
@@ -858,7 +890,7 @@ function woMount(){if(document.getElementById('wo'))return;const e=cur();if(!e){
    <div class="wo-row"><div class="wo-tx"><small id="woNeed"></small><h2 id="woName"></h2></div><div class="wo-cnt"><b id="woNum">0</b><span id="woTgt"></span></div></div>
    <p class="wo-hint" id="hint"></p>
    <p class="wo-msg" id="cs">카메라를 켜는 중…</p>
-   <div class="wo-act"><button class="btn glass" onclick="openGuide()">📖 안내문 보기</button><button class="btn glass sm" onclick="demoTick()" title="인식이 안 될 때 직접 1회 추가">＋1회</button></div>
+   <div class="wo-act"><button class="btn glass" onclick="openGuide()">📖 안내문 보기</button><button class="btn glass sm" onclick="demoTick()" title="인식이 안 될 때 직접 1회 추가">＋1회</button><button class="btn glass sm" id="woSkip" onclick="skipWarm()" hidden>건너뛰기</button></div>
   </div>
  </div>
  <div class="sheet-bg" id="woGuideBg" onclick="closeGuide()"></div>
@@ -872,24 +904,26 @@ function coachBtn(){const b=document.getElementById('voiceToggle');if(!b)return;
  b.innerHTML=voiceCoach?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>'}
 function fillGuide(first){const g=document.getElementById('woGuide'),e=cur();if(!g||!e)return;const EX=EXl();
  g.innerHTML=`<div class="grab"></div>
- <p class="eyebrow">${e.i+1}번째 동작 · 전체 ${EX.length}개</p>
+ <p class="eyebrow">${e.warm?'준비 운동 · 손가락 인식':`${e.i+1}번째 동작 · 전체 ${EX.length}개`}</p>
  <h2>${escHTML(e.n)} <span class="pill accent">${e.t}회</span></h2>
  <ol class="guide-steps">
-  <li><b>자리 잡기</b><span>휴대폰을 세워 두고 2~3걸음 뒤로 가요. ${document.getElementById('woNeed')?.textContent||''}</span></li>
+  <li><b>자리 잡기</b><span>${e.warm?'휴대폰을 세워 두고 손이 잘 보이게 한 걸음 떨어져요. ':'휴대폰을 세워 두고 2~3걸음 뒤로 가요. '}${document.getElementById('woNeed')?.textContent||''}</span></li>
   <li><b>동작</b><span>${escHTML(e.h)}</span></li>
-  <li><b>횟수</b><span>동작을 한 번 할 때마다 화면 숫자가 올라가요. ${e.t}회를 채우면 다음 동작으로 넘어가요.</span></li>
+  <li><b>시작</b><span>${e.warm?'손이':'몸이'} 화면에 다 들어오면 테두리가 초록색으로 바뀌고 3, 2, 1 카운트다운 뒤에 시작해요.</span></li>
+  <li><b>횟수</b><span>동작을 한 번 할 때마다 "띵" 소리·진동과 함께 숫자가 올라가요. ${e.t}회를 채우면 다음 동작으로 넘어가요.</span></li>
  </ol>
  <p class="guide-safe">통증이나 어지럼증이 느껴지면 바로 멈추고 쉬어요.</p>
  <div class="btn-row two"><button class="btn soft" onclick="speakGuide()">🔊 한 번 듣기</button><button class="btn primary" onclick="closeGuide(true)">${stream?'계속하기':'시작하기'}</button></div>`}
 function openGuide(first){fillGuide(first);document.getElementById('woGuide')?.classList.add('show');document.getElementById('woGuideBg')?.classList.add('show')}
-function closeGuide(go){document.getElementById('woGuide')?.classList.remove('show');document.getElementById('woGuideBg')?.classList.remove('show');if(go&&!stream)cam()}
+function closeGuide(go){audioUnlock();document.getElementById('woGuide')?.classList.remove('show');document.getElementById('woGuideBg')?.classList.remove('show');if(go&&!stream)cam()}
 function speakGuide(){const e=cur();if(!e||!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(`${e.n}. ${e.h}. ${e.t}회 해볼게요.`);u.lang='ko-KR';u.rate=.92;speechSynthesis.speak(u)}
 async function cam(){const v=document.getElementById('vid');setMsg('카메라를 켜는 중…');
  try{stream=await navigator.mediaDevices.getUserMedia({video:innerHeight>innerWidth?{facingMode:'user',width:{ideal:480},height:{ideal:640}}:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});v.srcObject=stream;await v.play()}
  catch(e){return setMsg(!navigator.mediaDevices?'이 화면에서는 카메라를 쓸 수 없어요. 파일을 크롬/사파리에서 직접 열거나 https 주소로 열어주세요.':e.name==='NotAllowedError'?'카메라 권한이 막혀 있어요. 주소창 왼쪽 자물쇠 → 카메라 허용 후 새로고침해 주세요.':e.name==='NotFoundError'?'카메라를 찾지 못했어요.':e.name==='NotReadableError'?'다른 앱이 카메라를 쓰고 있어요. 닫고 다시 눌러주세요.':'카메라를 켜지 못했어요 ('+e.name+'). 아래 직접 체크 버튼을 써주세요.')}
  showRc();setMsg('몸 인식 모델을 불러오는 중… (처음엔 몇 초 걸려요)');
  try{if(!VM){const B='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';VM=await import(B+'/vision_bundle.mjs');VL=await VM.FilesetResolver.forVisionTasks(B+'/wasm')}if(!PL){const B='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',M=VM,F=VL;const mk=d=>M.PoseLandmarker.createFromOptions(F,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',delegate:d},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.55,minPosePresenceConfidence:.55,minTrackingConfidence:.55});try{PL=await mk('GPU')}catch(e){PL=await mk('CPU')}}
-  SM=null;X={i:-2,s:-1,t:0,n:0,l:-9};setMsg('몸 인식이 준비됐어요. 2~3걸음 뒤로 가서 전신이 화면에 보이게 서 주세요.');const first=cur();if(first)sayCoach(first.p.h||first.h);loop()}
+  if(!HL&&cur()?.p.hand){setMsg('손가락 인식 모델을 불러오는 중…');try{const mkH=d=>VM.HandLandmarker.createFromOptions(VL,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:d},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.5,minHandPresenceConfidence:.5,minTrackingConfidence:.5});try{HL=await mkH('GPU')}catch(e){HL=await mkH('CPU')}}catch(e){HL=null}}
+  SM=null;const first=cur();gateReset(first);setMsg(first&&first.p.hand?'손 인식이 준비됐어요. 두 손바닥을 카메라 쪽으로 펴 보여 주세요.':'몸 인식이 준비됐어요. 2~3걸음 뒤로 가서 전신이 화면에 보이게 서 주세요.');if(first)sayCoach(first.p.h||first.h);loop()}
  catch(e){PL=null;stopCam();setMsg('인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 카메라를 다시 켜 주세요.')}}
 const BONE=[[11,13,'#4aa3ff'],[13,15,'#4aa3ff'],[12,14,'#4aa3ff'],[14,16,'#4aa3ff'],[23,25,'#ffb347'],[25,27,'#ffb347'],[24,26,'#ffb347'],[26,28,'#ffb347'],[11,12,'#4cc38a'],[11,23,'#4cc38a'],[12,24,'#4cc38a'],[23,24,'#4cc38a']];
 const PART=[['머리',[0]],['왼팔',[11,13,15]],['오른팔',[12,14,16]],['몸통',[11,12,23,24]],['왼다리',[23,25,27]],['오른다리',[24,26,28]]];
@@ -912,17 +946,28 @@ function wristHandPose(Hs,X,n){const act=(Hs||[]).filter(h=>h.fingers>=3).slice(
 function coachCue(e,m,L){if(!e||e.warm)return '';if(!m)return '몸 전체가 화면에 보이도록 카메라에서 조금 물러나 주세요.';if(e.p.low&&!m.low)return '발끝까지 화면에 들어오도록 조금 뒤로 가 주세요.';if(e.p.hip&&!m.hip)return '골반과 허리가 보이도록 조금 뒤로 가 주세요.';if(e.p.arm&&m.pa<95)return '팔꿈치가 너무 많이 접혔어요. 편안한 범위에서 천천히 움직여요.';if(e.p.id==='half'||e.p.id==='sq'||e.p.id==='sumo'){if(Math.abs(L[25].x-L[27].x)>.18||Math.abs(L[26].x-L[28].x)>.18)return '무릎이 발끝 방향을 향하도록 맞춰 주세요.';return '허리를 편안하게 세우고, 무릎이 발끝을 향하게 앉아 주세요.'}if(e.p.id==='knee'||e.p.id==='ke')return '상체를 세우고 좌우를 번갈아 천천히 움직여요.';if(e.p.id==='hinge')return '등을 둥글게 말지 말고, 엉덩이를 뒤로 보내며 숙여요.';if(e.p.id==='curl'){if(Math.abs(L[13].x-L[11].x)>.16||Math.abs(L[14].x-L[12].x)>.16)return '팔꿈치를 옆구리 가까이에 두고 팔을 접어 주세요.';return '팔꿈치를 몸 가까이에 두고 천천히 접었다 펴요.'}if(e.p.id==='wpu'||e.p.id==='kpu'||e.p.id==='pu')return '몸통을 곧게 유지하고, 무리하지 않는 범위에서 팔을 굽혀요.';if(e.p.id==='neck')return '어깨 힘을 빼고 목만 좌우로 천천히 기울여요.';if(e.p.id==='bend')return '골반은 정면을 향하게 두고 상체만 부드럽게 기울여요.';if(e.p.id==='twist')return '허리를 과하게 꺾지 말고 배에 힘을 준 채 작게 회전해요.';return '좋아요. 호흡을 멈추지 말고 편안한 범위에서 계속해요.'}
 function loop(){const v=document.getElementById('vid');if(!v||!stream||!PL)return;raf=requestAnimationFrame(loop);
  const n=performance.now();if(n-lastT<50||v.readyState<2)return;lastT=n;
- const R0=PL.detectForVideo(v,n).landmarks[0];
- if(!R0){SM=null;X.s=-1;X.n=0;X.l=-9;drawPoseOverlay(v,null);const b=document.getElementById('bd');if(b)b.innerHTML='';sayCoach('몸이 카메라에 잘 보이지 않아요. 조금 뒤로 가서 몸이 화면 안에 들어오도록 해주세요.');return setMsg('몸이 보이지 않아요. 뒤로 물러나 전신이 보이게 서 주세요.')}
+ const e=cur(),w=document.getElementById('vw');if(!e)return;if(G.key!==e.key)gateReset(e);
+ if(e.p.hand){// 준비 운동: 손가락 인식
+  drawPoseOverlay(v,null);const b=document.getElementById('bd');if(b)b.innerHTML='';
+  if(!HL){gateMiss();return setMsg('손가락 인식 모델을 쓸 수 없어요. 「건너뛰기」를 눌러 본 운동으로 넘어가 주세요.')}
+  handInfo=chooseHand(HL.detectForVideo(v,n));drawHandOverlay(v,handInfo);
+  if(!handInfo.some(h=>h.fingers>=3)){gateMiss();if(G.ph!=='go'){sayCoach('두 손바닥을 카메라 쪽으로 활짝 펴 보여 주세요.');return setMsg('✋ 두 손바닥을 카메라 쪽으로 펴 보여 주세요.')}}
+  if(!gatePass(n))return;
+  const p=wristHandPose(handInfo,X,n);if(p<0){X.s=-1;const msg='두 손의 손바닥과 손가락(3개 이상)이 보이게 카메라 쪽으로 펴 보여 주세요.';setMsg(msg);sayCoach(msg);return}
+  if(X.s<0)X.s=0;// 손목 돌리기는 '돌림 감지' 순간만 1로 바뀌어요
+  return countPhase(e,p,n,w)}
+ const R0=PL.detectForVideo(v,n).landmarks[0];handInfo=null;
+ if(!R0){SM=null;X.s=-1;X.n=0;X.l=-9;gateMiss();drawPoseOverlay(v,null);const b=document.getElementById('bd');if(b)b.innerHTML='';sayCoach('몸이 카메라에 잘 보이지 않아요. 조금 뒤로 가서 몸이 화면 안에 들어오도록 해주세요.');return setMsg('몸이 보이지 않아요. 뒤로 물러나 전신이 보이게 서 주세요.')}
  SM=SM?R0.map((p,k)=>({x:SM[k].x*.35+p.x*.65,y:SM[k].y*.35+p.y*.65,visibility:p.visibility??1})):R0.map(p=>({...p}));
- handInfo=HL?chooseHand(HL.detectForVideo(v,n)):null;drawPoseOverlay(v,SM);drawHandOverlay(v,handInfo);const e=cur(),w=document.getElementById('vw');if(!e)return;let m;
- if(e.p.arm){const r=[[11,13,15],[12,14,16]].filter(t=>t.every(i=>ok(SM,i)));if(!r.length)return setMsg('팔(어깨·팔꿈치·손목)이 보여야 해요. 카메라를 옆에 두고 옆모습이 나오게 해주세요.');m={pa:Math.min(...r.map(t=>ang(SM,...t)))}}
- else{m=met(SM);if(!m){sayCoach('머리와 팔이 화면에 보이도록 카메라 위치를 조정해 주세요.');return setMsg('머리·어깨·팔 관절이 또렷하게 보여야 인식해요. ✖ 표시된 부위를 화면 안으로 옮겨 주세요.')}}
- if(e.p.hip&&!m.hip){X.s=-1;X.n=0;sayCoach('골반까지 화면에 들어오도록 조금 뒤로 가 주세요.');return setMsg('골반 관절이 보여야 인식해요. 조금 뒤로 가 주세요.')}
- if(e.p.low&&!m.low){X.s=-1;X.n=0;sayCoach('무릎과 발목이 화면에 들어오도록 조금 뒤로 이동해 주세요.');return setMsg('무릎·발목 관절이 보여야 인식해요. 전신이 화면에 들어오도록 해 주세요.')}
+ drawPoseOverlay(v,SM);let m;
+ if(e.p.arm){const r=[[11,13,15],[12,14,16]].filter(t=>t.every(i=>ok(SM,i)));if(!r.length){gateMiss();return setMsg('팔(어깨·팔꿈치·손목)이 보여야 해요. 카메라를 옆에 두고 옆모습이 나오게 해주세요.')}m={pa:Math.min(...r.map(t=>ang(SM,...t)))}}
+ else{m=met(SM);if(!m){gateMiss();sayCoach('머리와 팔이 화면에 보이도록 카메라 위치를 조정해 주세요.');return setMsg('머리·어깨·팔 관절이 또렷하게 보여야 인식해요. ✖ 표시된 부위를 화면 안으로 옮겨 주세요.')}}
+ if(e.p.hip&&!m.hip){X.s=-1;X.n=0;gateMiss();sayCoach('골반까지 화면에 들어오도록 조금 뒤로 가 주세요.');return setMsg('골반 관절이 보여야 인식해요. 조금 뒤로 가 주세요.')}
+ if(e.p.low&&!m.low){X.s=-1;X.n=0;gateMiss();sayCoach('무릎과 발목이 화면에 들어오도록 조금 뒤로 이동해 주세요.');return setMsg('무릎·발목 관절이 보여야 인식해요. 전신이 화면에 들어오도록 해 주세요.')}
+ if(!gatePass(n))return;
  const cue=coachCue(e,m,SM);if(cue){const h=document.getElementById('hint');if(h)h.textContent=e.h+' · 코칭: '+cue;if(X.n===0||X.l!==1)sayCoach(cue)}
- if(X.i!==e.i)X={i:e.i,s:-1,t:0,n:0,l:-9,phaseAt:0,trail:[]};
- let p=e.warm&&e.i===0?wristHandPose(handInfo,X,n):e.warm?warmPose(e,SM,X,n):e.p.f(m,X);if(e.warm&&e.i===0&&p<0){X.s=-1;const msg=HL?'두 손의 손바닥과 손가락(3개 이상)이 보이게 카메라 쪽으로 펴 보여 주세요.':'손가락 인식 모델을 사용할 수 없어요. 데모 +1회 버튼을 이용해 주세요.';setMsg(msg);sayCoach(msg);return}if(p===X.l)X.n++;else{X.l=p;X.n=1;X.phaseAt=n}
+ countPhase(e,e.p.f(m,X),n,w)}
+function countPhase(e,p,n,w){if(p===X.l)X.n++;else{X.l=p;X.n=1;X.phaseAt=n}
  if(w)w.classList.toggle('hit',p===1&&X.n>=3);
  if(X.n>=3&&n-X.phaseAt>=120){if(p===0)X.s=0;else if(p===1&&X.s===0&&n-X.t>650){X.s=1;X.t=n;tick(1);return}}
  setMsg(`${e.n} · ${p===1?'💪 동작 인식!':p===0?'준비 자세 ✔':'움직이는 중…'}`)}
@@ -939,8 +984,9 @@ function met(L){if(![0,11,12,13,14,15,16].every(i=>ok(L,i)))return null;
  return{ny:L[0].y,nx:L[0].x,sy,hy,ky:(L[25].y+L[26].y)/2,tl:Math.max(.05,hy-sy),sw:Math.max(.05,sw0),hx:ho?(L[23].x+L[24].x)/2:(L[11].x+L[12].x)/2,hip:ho,low:ho&&[25,26,27,28].every(i=>ok(L,i)),
  tt:Math.abs(L[7].y-L[8].y)/Math.max(.05,sw0),sg:Math.sign(L[11].x-L[12].x)||1,el:L[13].y,er:L[14].y,wlx:L[15].x,wrx:L[16].x,wl:L[15].y,wr:L[16].y,kl:L[25].y,kr:L[26].y,ag:Math.abs(L[27].x-L[28].x),ax:(L[27].x+L[28].x)/2,al:L[27].y,ar:L[28].y}}
 function tick(n){const e=cur();if(!e)return;const d=D();if(e.warm){d.warm=d.warm||[];d.warm[e.i]=Math.min(e.t,(d.warm[e.i]||0)+n)}else d.ex[e.i]=Math.min(e.t,d.ex[e.i]+n);const nx=cur();
- if(!nx){save();if('speechSynthesis'in window&&voiceCoach){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('오늘 운동을 모두 마쳤어요. 정말 잘했어요!');u.lang='ko-KR';speechSynthesis.speak(u)}woClose(true);return}save();showRc();if(nx.i!==e.i){setMsg(`${e.n} 완료! ✔ 다음은 ${nx.n}`);toast(`✔ ${e.n} 완료! 다음은 ${nx.n}`);if(voiceCoach)sayCoach(nx.p.h||nx.h);else openGuide()}}
-function stopCam(){cancelAnimationFrame(raf);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+ const c=Math.floor(e.warm?d.warm[e.i]:d.ex[e.i]);repFx(c,c>=e.t);
+ if(!nx){save();if('speechSynthesis'in window&&voiceCoach){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('오늘 운동을 모두 마쳤어요. 정말 잘했어요!');u.lang='ko-KR';speechSynthesis.speak(u)}woClose(true);return}save();showRc();if(nx.key!==e.key){setMsg(`${e.n} 완료! ✔ 다음은 ${nx.n}`);toast(`✔ ${e.n} 완료! 다음은 ${nx.n}`);if(voiceCoach)speakNow(`${KN[c]||c}! ${e.n} 완료. 다음은 ${nx.n}. ${nx.p.h||nx.h}`);else openGuide()}}
+function stopCam(){cancelAnimationFrame(raf);G.key='';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
 // ===== 상담 챗봇 (규칙 기반) =====
 const CB=[[/(불안|무서|두려)/,'불안한 마음이 드는군요. 숨을 4초 들이쉬고 6초 내쉬어 볼까요? 지금 가장 걱정되는 장면은 어떤 거예요?'],
 [/(외롭|혼자)/,'혼자라는 느낌은 정말 힘들죠. 오늘 누군가와 짧게라도 눈을 마주치거나 인사를 해본 적 있나요?'],
@@ -954,10 +1000,27 @@ function chatInit(){if(!chatLog.length)chatLog=[['b',`안녕하세요, ${S.name}
 function escChat(t){return String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function pc(){const c=document.getElementById('chat');if(!c)return;c.innerHTML=chatLog.map(m=>`<div class="msg ${m[0]}">${escChat(m[1]).replace(/\n/g,'<br>')}</div>`).join('');c.scrollTop=c.scrollHeight}
 let chatSending=false;
-async function send(){const i=document.getElementById('ci'),btn=document.getElementById('sendBtn'),t=i?.value.trim();if(!t||chatSending)return;chatSending=true;if(btn)btn.disabled=true;i.value='';chatLog.push(['u',t]);chatLog.push(['b','답변을 준비하고 있어요…']);pc();const d=D();let answer='';
- const urgent=SAFETY.find(x=>x[0].test(t));
- if(urgent){answer=urgent[1]}else{try{const history=chatLog.slice(0,-1).slice(-12).map(m=>({role:m[0]==='u'?'user':'assistant',content:m[1]}));const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history})});const data=await res.json();if(!res.ok)throw new Error(data.error||'API 요청 실패');answer=data.text||'답변을 만들지 못했어요. 다시 한 번 말씀해 주세요.'}catch(e){const h=CB.find(x=>x[0].test(t));answer='AI 연결을 사용할 수 없어 간단한 기본 응답을 드릴게요.\n\n'+(h?h[1]:FB[d.chat%FB.length])}}
- chatLog[chatLog.length-1]=['b',answer];d.chat=Math.min(1,(d.chat||0)+1);if(d.chat>=1)chatLog.push(['b','오늘 대화는 여기까지예요. 더 이야기하고 싶다면 내일 다시 이어가도 괜찮아요 💜']);save();pc();chatSending=false;if(btn)btn.disabled=false;if(d.chat>=1)setTimeout(R,1400)}
+const CHAT_MAX=20;// 하루 최대 메시지 수 (비용 보호)
+function chatErr(st,msg){return st===503?'서버에 AI 키가 아직 설정되지 않았어요. (관리자: Vercel 환경 변수 ANTHROPIC_API_KEY 확인 후 Redeploy)':st===404?'AI 상담 서버(/api/chat)를 찾지 못했어요. (관리자: Vercel 배포 설정 확인)':st===429?'요청이 잠시 많아요. 1분 뒤에 다시 보내 주세요.':st===0?'인터넷 연결이 불안정하거나 응답이 너무 늦어요.':(msg||'AI 답변을 가져오지 못했어요.')}
+async function send(){const i=document.getElementById('ci'),btn=document.getElementById('sendBtn'),t=i?.value.trim();if(!t||chatSending)return;const d=D();
+ if((d.chat||0)>=CHAT_MAX){toast('오늘은 대화를 충분히 나눴어요. 내일 다시 이야기해요 💜');return}
+ chatSending=true;if(btn)btn.disabled=true;i.value='';chatLog.push(['u',t]);chatLog.push(['b','답변을 준비하고 있어요…','local']);pc();let answer='',local=false;
+ // 위기 표현은 AI를 거치지 않고 바로 안전 안내를 보여 줘요
+ const urgent=SAFETY[0].test(t);
+ if(urgent){answer=SAFETY[1]}else{let st=0,em='';try{
+   // 기본 응답(로컬)은 AI에게 보내지 않아요
+   const history=chatLog.slice(0,-1).filter(m=>m[2]!=='local').slice(-12).map(m=>({role:m[0]==='u'?'user':'assistant',content:m[1]}));
+   const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),45000);
+   const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:history}),signal:ctl.signal});clearTimeout(to);
+   st=res.status;const data=await res.json().catch(()=>({}));if(!res.ok){em=data.error;throw new Error(em||'HTTP '+st)}
+   answer=data.text||'답변을 만들지 못했어요. 다시 한 번 말씀해 주세요.'}
+  catch(e){if(e.name==='AbortError'||e instanceof TypeError)st=0;console.warn('chat error',st,e);const h=CB.find(x=>x[0].test(t));local=true;answer='⚠️ '+chatErr(st,em)+'\n\n'+(h?h[1]:FB[(d.chat||0)%FB.length])}}
+ chatLog[chatLog.length-1]=local?['b',answer,'local']:['b',answer];
+ const first=!(d.chat>=1);d.chat=(d.chat||0)+1;
+ if(first)chatLog.push(['b','오늘의 상담 미션을 달성했어요 🎉 더 이야기하고 싶으면 계속 적어도 괜찮아요. 다 됐다면 아래 「미션 완료」를 눌러 주세요.','local']);
+ if(d.chat>=CHAT_MAX)chatLog.push(['b','오늘 대화는 여기까지예요. 내일 다시 이어가요 💜','local']);
+ save();chatSending=false;if(btn)btn.disabled=false;
+ if(first){R();setTimeout(()=>document.getElementById('chat')?.scrollIntoView({block:'end'}),50)}else{pc();i.focus()}}
 
 // ===== 지도 =====
 const hav=(a,b,c,d)=>{const r=x=>x*Math.PI/180,R=6371e3,h=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
