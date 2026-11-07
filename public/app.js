@@ -9,34 +9,38 @@ function save(){if(S&&S.gold>GOLD_MAX)S.gold=GOLD_MAX;if(S&&layerPack)S.pngEq={.
 const vis=(m,y)=>y;const D1=(m)=>Math.abs(m.wlx-m.wrx)/m.sw,KR=(m,k)=>(k-m.hy)/m.tl;
 const ang=(L,a,b,c)=>{const p=[(L[a].x-L[b].x)*1.33,L[a].y-L[b].y],q=[(L[c].x-L[b].x)*1.33,L[c].y-L[b].y];return Math.acos(Math.max(-1,Math.min(1,(p[0]*q[0]+p[1]*q[1])/((Math.hypot(...p)*Math.hypot(...q))||1))))*180/Math.PI};
 const ST=['neck'];
+// 판정은 느슨하게: 정확한 자세보다 '움직였는지'를 봐요.
+// RK: 처음 선 자세를 기준(1.0)으로 무릎-골반 높이가 얼마나 줄었는지(앉을수록 작아짐). 체형·카메라 각도와 무관해요.
+const RK=(m,X,k)=>{const r=KR(m,m.ky);if(X.kb==null||r>X.kb)X.kb=r;else if(r>.92*X.kb)X.kb+=(r-X.kb)*.02;return KR(m,k??m.ky)/Math.max(.05,X.kb)};
+const AB=(m,X)=>{const a=Math.max(m.al,m.ar)-m.hy;if(X.ab==null||a>X.ab)X.ab=a;return X.ab};
 const POOL=[
-{id:'neck',n:'목 스트레칭',t:6,h:'어깨는 내리고, 고개를 천천히 왼쪽·오른쪽으로 번갈아 기울여요',f:m=>m.tt>.22?1:m.tt<.1?0:-1},
-{id:'cross',n:'팔 스트레칭',t:6,h:'한쪽 팔을 가슴 앞으로 뻗어 반대 팔로 당겨주고, 팔을 바꿔요',f:m=>(m.wlx-m.wrx)*m.sg<-.1*m.sw&&m.wl>m.sy&&m.wl<m.hy?1:((m.wlx-m.wrx)*m.sg>.7*m.sw?0:-1)},
-{id:'sidelunge',n:'사이드 런지',t:10,low:1,h:'발을 넓게 벌리고 한쪽 무릎을 굽히며 몸을 옆으로 내렸다가 돌아와요',f:m=>m.ag>1.4*m.sw&&Math.abs(m.hx-m.ax)>.45*m.sw?1:(m.ag<1.15*m.sw?0:-1)},
-{id:'sidestep',n:'사이드 스텝',t:16,hip:1,h:'한 걸음씩 옆으로 크게 스텝했다가 제자리로 돌아와요',f:(m,X)=>{X.c=X.c??m.hx;const d=Math.abs(m.hx-X.c)/m.sw;if(d>.6)return 1;if(d<.25){X.c+=(m.hx-X.c)*.08;return 0}return -1}},
-{id:'jsq',n:'점프 스쿼트',t:8,low:1,h:'스쿼트로 앉았다가 힘차게 위로 점프해요',f:(m,X)=>{const r=KR(m,m.ky);X.b=X.b??m.hy;if(r<.65)X.q=1;if(X.q&&m.hy<X.b-.12*m.tl){X.q=0;return 1}if(r>.85&&m.hy>X.b-.05*m.tl){X.b+=(m.hy-X.b)*.05;return 0}return -1}},
-{id:'buttkick',n:'버트 킥',t:16,low:1,h:'제자리에서 뒤꿈치를 엉덩이 쪽으로 번갈아 차올려요',f:m=>(m.al-m.hy)/m.tl<1.45||(m.ar-m.hy)/m.tl<1.45?1:((m.al-m.hy)/m.tl>1.75&&(m.ar-m.hy)/m.tl>1.75?0:-1)},
-{id:'toe',n:'토 터치',t:10,low:1,h:'다리를 벌리고 서서 두 손으로 발끝을 향해 숙였다가 일어나요',f:m=>m.wl>m.ky-.1*m.tl&&m.wr>m.ky-.1*m.tl?1:(m.wl<m.hy+.3*m.tl&&m.wr<m.hy+.3*m.tl?0:-1)},
-{id:'sqpress',n:'스쿼트 프레스',t:8,low:1,h:'주먹을 어깨에 두고 앉았다가, 일어나며 두 팔을 머리 위로 밀어 올려요',f:m=>{const r=KR(m,m.ky);return r>.85&&m.wl<m.ny&&m.wr<m.ny?1:(r<.7?0:-1)}},
-{id:'fwd',n:'프론트 레이즈',t:8,h:'두 팔을 어깨 높이로 앞으로 쭉 뻗었다가 내려요',f:m=>Math.abs(m.wl-m.sy)<.35*m.tl&&Math.abs(m.wr-m.sy)<.35*m.tl&&D1(m)<1.4?1:(m.wl>m.sy+.6*m.tl&&m.wr>m.sy+.6*m.tl?0:-1)},
-{id:'tpose',n:'레터럴 레이즈',t:8,h:'팔을 양옆 어깨 높이까지 쭉 펴서 올렸다가 내려요',f:m=>D1(m)>2.2&&Math.abs(m.wl-m.sy)<.35*m.tl&&Math.abs(m.wr-m.sy)<.35*m.tl?1:(m.wl>m.sy+.6*m.tl&&m.wr>m.sy+.6*m.tl?0:-1)},
-{id:'alt',n:'얼터네이팅 숄더 프레스',t:12,h:'왼팔, 오른팔을 번갈아 머리 위로 쭉 밀어 올려요',f:m=>{const a=m.wl<m.ny,b=m.wr<m.ny;return a!==b?1:(m.wl>m.ny&&m.wr>m.ny&&m.wl<m.sy+.3*m.tl&&m.wr<m.sy+.3*m.tl?0:-1)}},
-{id:'lat',n:'랫 풀다운',t:10,h:'두 팔을 머리 위로 들었다가, 팔꿈치를 옆구리로 당기며 어깨 높이까지 내려요',f:m=>m.wl>m.ny&&m.wl<m.sy+.3*m.tl&&m.wr>m.ny&&m.wr<m.sy+.3*m.tl&&m.el>m.wl+.1*m.tl&&m.er>m.wr+.1*m.tl?1:(m.wl<m.ny&&m.wr<m.ny?0:-1)},
-{id:'jack',n:'점핑잭',t:15,low:1,h:'점프하며 다리를 벌리고 팔을 머리 위로, 다시 모아요',f:m=>{const up=m.wl<m.ny&&m.wr<m.ny;return up&&m.ag>1.5*m.sw?1:(m.wl>m.sy&&m.wr>m.sy&&m.ag<1.2*m.sw?0:-1)}},
-{id:'jump',n:'제자리 점프',t:10,hip:1,h:'무릎을 살짝 굽혔다가 가볍게 위로 뛰어요',f:(m,X)=>{X.b=X.b??m.hy;if(m.hy<X.b-.15*m.tl)return 1;if(m.hy>X.b-.05*m.tl){X.b+=(m.hy-X.b)*.05;return 0}return -1}},
-{id:'press',n:'숄더 프레스',t:10,h:'두 주먹을 어깨 높이에서 머리 위로 쭉 밀어 올렸다가 내려요',f:m=>m.wl<m.ny&&m.wr<m.ny?1:(m.wl>m.ny&&m.wl<m.sy+.3*m.tl&&m.wr>m.ny&&m.wr<m.sy+.3*m.tl?0:-1)},
-{id:'half',n:'하프 스쿼트',t:10,low:1,h:'발을 어깨너비로 벌리고 의자에 앉듯 살짝만 앉았다 일어나요',f:m=>{const r=KR(m,m.ky);return r<.78?1:r>.92?0:-1}},
-{id:'knee',n:'하이 니',t:20,low:1,h:'제자리에서 무릎을 허리 높이까지 번갈아 올려요',f:m=>KR(m,m.kl)<.72||KR(m,m.kr)<.72?1:(KR(m,m.kl)>.88&&KR(m,m.kr)>.88?0:-1)},
-{id:'sq',n:'스쿼트',t:12,low:1,h:'엉덩이를 뒤로 빼며 허벅지가 바닥과 가까워질 때까지 앉았다 일어나요',f:m=>{const r=KR(m,m.ky);return r<.6?1:r>.85?0:-1}},
-{id:'sumo',n:'스모 스쿼트',t:10,low:1,h:'다리를 넓게 벌리고 무릎을 바깥으로 향한 채 앉았다 일어나요',f:m=>{const r=KR(m,m.ky);return r<.6&&m.ag>1.3*m.sw?1:r>.85?0:-1}},
-{id:'hinge',n:'굿모닝',t:8,hip:1,h:'무릎을 살짝 굽히고 허리를 곧게 편 채 인사하듯 상체를 숙였다 일어나요',f:(m,X)=>{X.b=Math.max(X.b||0,m.tl);return m.tl<.6*X.b?1:m.tl>.9*X.b?0:-1}},
-{id:'wpu',n:'벽 팔굽혀 펴기',t:10,arm:1,h:'벽을 짚고 서서 가슴을 벽에 가깝게 굽혔다 펴요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<110?1:m.pa>150?0:-1},
-{id:'kpu',n:'무릎 팔굽혀 펴기',t:8,arm:1,h:'무릎을 바닥에 대고 가슴을 바닥 가까이 내렸다 올라와요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<100?1:m.pa>150?0:-1},
-{id:'pu',n:'팔굽혀 펴기',t:6,arm:1,h:'몸을 일직선으로 유지하고 가슴을 바닥 가까이 내렸다 올라와요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<95?1:m.pa>150?0:-1},
-{id:'curl',n:'바이셉 컬',t:12,h:'팔꿈치를 옆구리에 붙이고 주먹이 어깨로 오게 접었다 펴요',f:m=>m.wl<m.el-.1*m.tl&&m.wr<m.er-.1*m.tl?1:(m.wl>m.el+.1*m.tl&&m.wr>m.er+.1*m.tl?0:-1)},
-{id:'bend',n:'사이드 벤드',t:10,h:'두 발을 벌리고 상체를 왼쪽, 오른쪽으로 번갈아 기울여요',f:m=>{const l=Math.abs(m.nx-m.hx)/m.sw;return l>.5?1:l<.22?0:-1}},
-{id:'twist',n:'러시안 트위스트',t:12,h:'두 손을 가슴 앞에 모으고, 배에 힘을 주며 몸통을 좌우로 돌려요',f:m=>{if(D1(m)>.8)return -1;const w=Math.abs((m.wlx+m.wrx)/2-m.hx)/m.sw;return w>.7?1:w<.3?0:-1}},
-{id:'ke',n:'스탠딩 바이시클 크런치',t:12,low:1,h:'무릎을 올리면서 같은 쪽 팔꿈치를 내려 서로 만나게 해요',f:m=>{const a=KR(m,m.kl)<.7&&Math.min(Math.abs(m.wl-m.kl),Math.abs(m.wr-m.kl))<.4*m.tl,b=KR(m,m.kr)<.7&&Math.min(Math.abs(m.wl-m.kr),Math.abs(m.wr-m.kr))<.4*m.tl;return a||b?1:(KR(m,m.kl)>.88&&KR(m,m.kr)>.88?0:-1)}}];
+{id:'neck',n:'목 스트레칭',t:6,h:'어깨는 내리고, 고개를 천천히 왼쪽·오른쪽으로 번갈아 기울여요',f:m=>m.tt>.15?1:m.tt<.08?0:-1},
+{id:'cross',n:'팔 스트레칭',t:6,up:1,h:'한쪽 팔을 가슴 앞으로 뻗어 반대 팔로 당겨주고, 팔을 바꿔요',f:m=>(m.wlx-m.wrx)*m.sg<.15*m.sw&&m.wl<m.hy+.2*m.tl?1:((m.wlx-m.wrx)*m.sg>.5*m.sw?0:-1)},
+{id:'sidelunge',n:'사이드 런지',t:10,low:1,h:'발을 넓게 벌리고 한쪽 무릎을 굽히며 몸을 옆으로 내렸다가 돌아와요',f:m=>{const sh=Math.abs(m.hx-m.ax)/m.sw;return sh>.28?1:sh<.14?0:-1}},
+{id:'sidestep',n:'사이드 스텝',t:16,hip:1,h:'한 걸음씩 옆으로 크게 스텝했다가 제자리로 돌아와요',f:(m,X)=>{X.c=X.c??m.hx;const d=Math.abs(m.hx-X.c)/m.sw;if(d>.42)return 1;if(d<.2){X.c+=(m.hx-X.c)*.08;return 0}return -1}},
+{id:'jsq',n:'점프 스쿼트',t:8,low:1,h:'스쿼트로 앉았다가 힘차게 위로 점프해요',f:(m,X)=>{const r=RK(m,X);X.b=X.b??m.hy;if(r<.85)X.q=1;if(X.q&&m.hy<X.b-.06*m.tl){X.q=0;return 1}if(r>.93){X.b+=(m.hy-X.b)*.05;return 0}return -1}},
+{id:'buttkick',n:'버트 킥',t:16,low:1,h:'제자리에서 뒤꿈치를 엉덩이 쪽으로 번갈아 차올려요',f:(m,X)=>{const b=AB(m,X),l=(m.al-m.hy)/b,r=(m.ar-m.hy)/b;return l<.88||r<.88?1:(l>.95&&r>.95?0:-1)}},
+{id:'toe',n:'토 터치',t:10,low:1,up:1,h:'다리를 벌리고 서서 두 손으로 발끝을 향해 숙였다가 일어나요',f:m=>Math.max(m.wl,m.wr)>m.hy+.45*m.tl?1:(Math.max(m.wl,m.wr)<m.hy+.25*m.tl?0:-1)},
+{id:'sqpress',n:'스쿼트 프레스',t:8,low:1,up:1,h:'주먹을 어깨에 두고 앉았다가, 일어나며 두 팔을 머리 위로 밀어 올려요',f:(m,X)=>{const r=RK(m,X);return r>.9&&Math.min(m.wl,m.wr)<m.ny+.05*m.tl?1:(r<.88?0:-1)}},
+{id:'fwd',n:'프론트 레이즈',t:8,up:1,h:'두 팔을 어깨 높이로 앞으로 쭉 뻗었다가 내려요',f:m=>Math.max(m.wl,m.wr)<m.sy+.45*m.tl?1:(Math.min(m.wl,m.wr)>m.sy+.55*m.tl?0:-1)},
+{id:'tpose',n:'레터럴 레이즈',t:8,up:1,h:'팔을 양옆 어깨 높이까지 쭉 펴서 올렸다가 내려요',f:m=>D1(m)>1.7&&Math.max(m.wl,m.wr)<m.sy+.45*m.tl?1:(Math.min(m.wl,m.wr)>m.sy+.55*m.tl?0:-1)},
+{id:'alt',n:'얼터네이팅 숄더 프레스',t:12,up:1,h:'왼팔, 오른팔을 번갈아 머리 위로 쭉 밀어 올려요',f:(m,X)=>{const t=m.ny+.1*m.tl,a=m.wl<t,b=m.wr<t,side=a&&!b?1:b&&!a?2:0;if(side&&side!==X.last){X.last=side;return 2}return a||b?-1:0}},
+{id:'lat',n:'랫 풀다운',t:10,up:1,h:'두 팔을 머리 위로 들었다가, 팔꿈치를 옆구리로 당기며 어깨 높이까지 내려요',f:m=>Math.min(m.wl,m.wr)>m.ny+.05*m.tl&&m.el>m.wl&&m.er>m.wr?1:(Math.max(m.wl,m.wr)<m.ny?0:-1)},
+{id:'jack',n:'점핑잭',t:15,low:1,up:1,h:'점프하며 다리를 벌리고 팔을 머리 위로, 다시 모아요',f:m=>Math.max(m.wl,m.wr)<m.sy&&m.ag>1.25*m.sw?1:(Math.min(m.wl,m.wr)>m.sy+.1*m.tl?0:-1)},
+{id:'jump',n:'제자리 점프',t:10,hip:1,h:'무릎을 살짝 굽혔다가 가볍게 위로 뛰어요',f:(m,X)=>{X.b=X.b??m.hy;if(m.hy<X.b-.08*m.tl)return 1;if(m.hy>X.b-.04*m.tl){X.b+=(m.hy-X.b)*.05;return 0}return -1}},
+{id:'press',n:'숄더 프레스',t:10,up:1,h:'두 주먹을 어깨 높이에서 머리 위로 쭉 밀어 올렸다가 내려요',f:m=>Math.max(m.wl,m.wr)<m.ny+.05*m.tl?1:(Math.min(m.wl,m.wr)>m.ny+.2*m.tl?0:-1)},
+{id:'half',n:'하프 스쿼트',t:10,low:1,h:'발을 어깨너비로 벌리고 의자에 앉듯 살짝만 앉았다 일어나요',f:(m,X)=>{const r=RK(m,X);return r<.9?1:r>.96?0:-1}},
+{id:'knee',n:'하이 니',t:20,low:1,h:'제자리에서 무릎을 허리 높이까지 번갈아 올려요',f:(m,X)=>{RK(m,X);const l=RK(m,X,m.kl),r=RK(m,X,m.kr);return l<.82||r<.82?1:(l>.9&&r>.9?0:-1)}},
+{id:'sq',n:'스쿼트',t:12,low:1,h:'엉덩이를 뒤로 빼며 허벅지가 바닥과 가까워질 때까지 앉았다 일어나요',f:(m,X)=>{const r=RK(m,X);return r<.82?1:r>.94?0:-1}},
+{id:'sumo',n:'스모 스쿼트',t:10,low:1,h:'다리를 넓게 벌리고 무릎을 바깥으로 향한 채 앉았다 일어나요',f:(m,X)=>{const r=RK(m,X);return r<.85?1:r>.94?0:-1}},
+{id:'hinge',n:'굿모닝',t:8,hip:1,h:'무릎을 살짝 굽히고 허리를 곧게 편 채 인사하듯 상체를 숙였다 일어나요',f:(m,X)=>{X.b=Math.max(X.b||0,m.tl);return m.tl<.78*X.b?1:m.tl>.9*X.b?0:-1}},
+{id:'wpu',n:'벽 팔굽혀 펴기',t:10,arm:1,h:'벽을 짚고 서서 가슴을 벽에 가깝게 굽혔다 펴요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<125?1:m.pa>145?0:-1},
+{id:'kpu',n:'무릎 팔굽혀 펴기',t:8,arm:1,h:'무릎을 바닥에 대고 가슴을 바닥 가까이 내렸다 올라와요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<120?1:m.pa>145?0:-1},
+{id:'pu',n:'팔굽혀 펴기',t:6,arm:1,h:'몸을 일직선으로 유지하고 가슴을 바닥 가까이 내렸다 올라와요 (카메라는 옆에 두고 옆모습이 보이게)',f:m=>m.pa<115?1:m.pa>145?0:-1},
+{id:'curl',n:'바이셉 컬',t:12,up:1,h:'팔꿈치를 옆구리에 붙이고 주먹이 어깨로 오게 접었다 펴요',f:m=>m.wl<m.el||m.wr<m.er?1:(m.wl>m.el+.15*m.tl&&m.wr>m.er+.15*m.tl?0:-1)},
+{id:'bend',n:'사이드 벤드',t:10,h:'두 발을 벌리고 상체를 왼쪽, 오른쪽으로 번갈아 기울여요',f:m=>{const l=Math.abs(m.nx-m.hx)/m.sw;return l>.33?1:l<.18?0:-1}},
+{id:'twist',n:'러시안 트위스트',t:12,up:1,h:'두 손을 가슴 앞에 모으고, 배에 힘을 주며 몸통을 좌우로 돌려요',f:m=>{const w=Math.abs((m.wlx+m.wrx)/2-m.hx)/m.sw;return w>.42?1:w<.2?0:-1}},
+{id:'ke',n:'스탠딩 바이시클 크런치',t:12,low:1,h:'무릎을 올리면서 같은 쪽 팔꿈치를 내려 서로 만나게 해요',f:(m,X)=>{RK(m,X);const l=RK(m,X,m.kl),r=RK(m,X,m.kr);return l<.82||r<.82?1:(l>.9&&r>.9?0:-1)}}];
 const PARTS=['하체','전신','상체'];
 const PT={'하체':{e:'🦵',d:'허벅지와 엉덩이 큰 근육을 써요. 천천히 앉았다 일어나요.',ids:['half','sq','sumo','knee','sidestep','sidelunge','buttkick','jsq']},
 '전신':{e:'🔥',d:'온몸을 크게 움직이는 운동이에요. 가볍게 뛰면서 심장을 깨워요.',ids:['knee','half','jack','buttkick','toe','sqpress','jsq','jump']},
@@ -870,7 +874,7 @@ function sayCoach(text){if(!voiceCoach||!text||!('speechSynthesis'in window))ret
 function showRc(){const e=cur(),d=D(),EX=EXl(),set=(id,t)=>{const x=document.getElementById(id);if(x)x.textContent=t};
  if(!e)return;
  set('woName',e.n);set('woNum',Math.floor(e.c));set('woTgt','/'+e.t+'회');
- set('hint',e.h);set('woNeed',e.p.hand?'손이 화면에 보여야 해요 (한 손도 OK)':e.p.arm?'옆모습·팔이 보여야 해요':e.p.low?'발끝까지 전신이 보여야 해요':e.p.hip?'허리까지 보여야 해요':'상체만 보여도 돼요');
+ set('hint',e.h);set('woNeed',e.p.hand?'손이 화면에 보여야 해요 (한 손도 OK)':e.p.arm?'옆모습·팔이 보여야 해요':e.p.low?'무릎·발까지 전신이 보여야 해요':e.p.hip?'허리까지 보여야 해요':'상체만 보여도 돼요');
  const sk=document.getElementById('woSkip');if(sk)sk.hidden=!e.warm;const wl=warmLeft(d);
  const seg=document.getElementById('woSeg');if(seg)seg.innerHTML=WARM.map((x,i)=>`<i class="${!wl?'done':e.warm&&i===e.i?'on':''}"><b style="width:${Math.min(100,((d.warm||[])[i]||0)/x.t*100)}%"></b></i>`).join('')+EX.map((x,i)=>`<i class="${d.ex[i]>=x[1]?'done':!e.warm&&i===e.i?'on':''}"><b style="width:${Math.min(100,d.ex[i]/x[1]*100)}%"></b></i>`).join('');
  const g=document.getElementById('woGuide');if(g&&g.classList.contains('show'))fillGuide()}
@@ -927,7 +931,7 @@ async function cam(){const v=document.getElementById('vid');setMsg('카메라를
  catch(e){PL=null;stopCam();setMsg('인식 모델을 불러오지 못했어요. 인터넷 연결을 확인하고 카메라를 다시 켜 주세요.')}}
 const BONE=[[11,13,'#4aa3ff'],[13,15,'#4aa3ff'],[12,14,'#4aa3ff'],[14,16,'#4aa3ff'],[23,25,'#ffb347'],[25,27,'#ffb347'],[24,26,'#ffb347'],[26,28,'#ffb347'],[11,12,'#4cc38a'],[11,23,'#4cc38a'],[12,24,'#4cc38a'],[23,24,'#4cc38a']];
 const PART=[['머리',[0]],['왼팔',[11,13,15]],['오른팔',[12,14,16]],['몸통',[11,12,23,24]],['왼다리',[23,25,27]],['오른다리',[24,26,28]]];
-const ok=(L,i)=>!!L[i]&&Number.isFinite(L[i].x)&&Number.isFinite(L[i].y)&&(L[i].visibility??1)>.62;
+const ok=(L,i)=>!!L[i]&&Number.isFinite(L[i].x)&&Number.isFinite(L[i].y)&&(L[i].visibility??1)>.5;
 function drawPoseOverlay(v,L){const c=document.getElementById('ov');if(!c)return;if(c.width!==v.videoWidth){c.width=v.videoWidth;c.height=v.videoHeight}
  const g=c.getContext('2d'),W=c.width,H=c.height;g.clearRect(0,0,W,H);if(!L)return;g.lineWidth=5;g.lineCap='round';
  BONE.forEach(([a,b,col])=>{if(!ok(L,a)||!ok(L,b))return;g.strokeStyle=col;g.beginPath();g.moveTo(L[a].x*W,L[a].y*H);g.lineTo(L[b].x*W,L[b].y*H);g.stroke()});
@@ -972,15 +976,16 @@ function loop(){const v=document.getElementById('vid');if(!v||!stream||!PL)retur
  SM=SM?R0.map((p,k)=>({x:SM[k].x*.35+p.x*.65,y:SM[k].y*.35+p.y*.65,visibility:p.visibility??1})):R0.map(p=>({...p}));
  drawPoseOverlay(v,SM);let m;
  if(e.p.arm){const r=[[11,13,15],[12,14,16]].filter(t=>t.every(i=>ok(SM,i)));if(!r.length){gateMiss();return setMsg('팔(어깨·팔꿈치·손목)이 보여야 해요. 카메라를 옆에 두고 옆모습이 나오게 해주세요.')}m={pa:Math.min(...r.map(t=>ang(SM,...t)))}}
- else{m=met(SM);if(!m){gateMiss();sayCoach('머리와 팔이 화면에 보이도록 카메라 위치를 조정해 주세요.');return setMsg('머리·어깨·팔 관절이 또렷하게 보여야 인식해요. ✖ 표시된 부위를 화면 안으로 옮겨 주세요.')}}
+ else{m=met(SM,e.p);if(!m){gateMiss();const t=e.p.up?'머리·어깨·팔':'머리와 어깨';sayCoach(t+'가 화면에 보이도록 카메라 위치를 조정해 주세요.');return setMsg(t+' 관절이 보여야 인식해요. ✖ 표시된 부위를 화면 안으로 옮겨 주세요.')}}
  if(e.p.hip&&!m.hip){X.s=-1;X.n=0;gateMiss();sayCoach('골반까지 화면에 들어오도록 조금 뒤로 가 주세요.');return setMsg('골반 관절이 보여야 인식해요. 조금 뒤로 가 주세요.')}
  if(e.p.low&&!m.low){X.s=-1;X.n=0;gateMiss();sayCoach('무릎과 발목이 화면에 들어오도록 조금 뒤로 이동해 주세요.');return setMsg('무릎·발목 관절이 보여야 인식해요. 전신이 화면에 들어오도록 해 주세요.')}
  if(!gatePass(n))return;
  const cue=coachCue(e,m,SM);if(cue){const h=document.getElementById('hint');if(h)h.textContent=e.h+' · 코칭: '+cue;if(X.n===0||X.l!==1)sayCoach(cue)}
  countPhase(e,e.p.f(m,X),n,w)}
-function countPhase(e,p,n,w){if(p===X.l)X.n++;else{X.l=p;X.n=1;X.phaseAt=n}
- if(w)w.classList.toggle('hit',p===1&&X.n>=3);
- if(X.n>=3&&n-X.phaseAt>=120){if(p===0)X.s=0;else if(p===1&&X.s===0&&n-X.t>650){X.s=1;X.t=n;tick(1);return}}
+function countPhase(e,p,n,w){if(p===2){if(n-X.t>450){X.t=n;X.s=1;if(w)w.classList.add('hit');tick(1)}return}// 2 = 좌우 번갈아 동작: 방향이 바뀔 때마다 바로 1회
+ if(p===X.l)X.n++;else{X.l=p;X.n=1;X.phaseAt=n}
+ if(w)w.classList.toggle('hit',p===1&&X.n>=2);
+ if(X.n>=2&&n-X.phaseAt>=80){if(p===0)X.s=0;else if(p===1&&X.s===0&&n-X.t>450){X.s=1;X.t=n;tick(1);return}}
  setMsg(`${e.n} · ${p===1?'💪 동작 인식!':p===0?'준비 자세 ✔':'움직이는 중…'}`)}
 function warmPose(e,L,X,n){const k=e.i;const center=(a,b)=>({x:(L[a].x+L[b].x)/2,y:(L[a].y+L[b].y)/2});const fire=()=>{X.warmUntil=n+450;return 1};
  if(k===0)return -1;if(k===1){const need=[23,25,27];if(!need.every(i=>ok(L,i)))return -1;const ang=Math.atan2(L[27].y-L[25].y,L[27].x-L[25].x);if(X.lastAngle!==undefined){let d=ang-X.lastAngle;while(d>Math.PI)d-=2*Math.PI;while(d< -Math.PI)d+=2*Math.PI;if(!X.turnDir||Math.sign(d)===X.turnDir){X.turnDir=Math.sign(d)||X.turnDir;X.turnSum=(X.turnSum||0)+d}else{X.turnSum=d;X.turnDir=Math.sign(d)}if(Math.abs(X.turnSum)>=Math.PI*1.65){X.turnSum=0;X.turnDir=0;fire()}}X.lastAngle=ang;return n<(X.warmUntil||0)?1:0}
@@ -990,9 +995,9 @@ function warmPose(e,L,X,n){const k=e.i;const center=(a,b)=>({x:(L[a].x+L[b].x)/2
  if(k===5){if(![11,12,15,16,23,24,27,28].every(i=>ok(L,i)))return -1;const sw=Math.abs(L[23].x-L[24].x),ank=Math.abs(L[27].x-L[28].x),open=L[15].y<L[11].y&&L[16].y<L[12].y&&ank>sw*1.35,closed=L[15].y>L[11].y&&L[16].y>L[12].y&&ank<sw*1.15;return open?1:closed?0:-1}
  return -1}
 function alternate(v,X,n,threshold){const side=v>threshold?1:v< -threshold?-1:0;if(side){if(X.lastSide&&side!==X.lastSide){X.warmUntil=n+450;X.lastSide=side;return 1}X.lastSide=side;return n<(X.warmUntil||0)?1:0}return n<(X.warmUntil||0)?1:0}
-function met(L){if(![0,11,12,13,14,15,16].every(i=>ok(L,i)))return null;
+function met(L,P){if(![0,11,12].every(i=>ok(L,i)))return null;if(P&&P.up&&!([11,13,15].every(i=>ok(L,i))||[12,14,16].every(i=>ok(L,i))))return null;
  const sy=(L[11].y+L[12].y)/2,sw0=Math.abs(L[11].x-L[12].x),ho=ok(L,23)&&ok(L,24),hy=ho?(L[23].y+L[24].y)/2:sy+1.25*Math.max(.05,sw0);
- return{ny:L[0].y,nx:L[0].x,sy,hy,ky:(L[25].y+L[26].y)/2,tl:Math.max(.05,hy-sy),sw:Math.max(.05,sw0),hx:ho?(L[23].x+L[24].x)/2:(L[11].x+L[12].x)/2,hip:ho,low:ho&&[25,26,27,28].every(i=>ok(L,i)),
+ return{ny:L[0].y,nx:L[0].x,sy,hy,ky:(L[25].y+L[26].y)/2,tl:Math.max(.05,hy-sy),sw:Math.max(.05,sw0),hx:ho?(L[23].x+L[24].x)/2:(L[11].x+L[12].x)/2,hip:ho,low:ho&&ok(L,25)&&ok(L,26)&&(ok(L,27)||ok(L,28)),
  tt:Math.abs(L[7].y-L[8].y)/Math.max(.05,sw0),sg:Math.sign(L[11].x-L[12].x)||1,el:L[13].y,er:L[14].y,wlx:L[15].x,wrx:L[16].x,wl:L[15].y,wr:L[16].y,kl:L[25].y,kr:L[26].y,ag:Math.abs(L[27].x-L[28].x),ax:(L[27].x+L[28].x)/2,al:L[27].y,ar:L[28].y}}
 function tick(n){const e=cur();if(!e)return;const d=D();if(e.warm){d.warm=d.warm||[];d.warm[e.i]=Math.min(e.t,(d.warm[e.i]||0)+n)}else d.ex[e.i]=Math.min(e.t,d.ex[e.i]+n);const nx=cur();
  const c=Math.floor(e.warm?d.warm[e.i]:d.ex[e.i]);repFx(c,c>=e.t);
