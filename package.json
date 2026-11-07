@@ -1,0 +1,14 @@
+{
+  "name": "maeum-han-geoleum",
+  "private": true,
+  "version": "1.0.0",
+  "description": "마음 한 걸음 – 사회성 재활 게임 PWA (Vercel + Claude API)",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env dev-server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  }
+}
