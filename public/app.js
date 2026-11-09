@@ -112,14 +112,16 @@ const D=()=>{const t=today();const d=S.days[t]=S.days[t]||{chat:0,done:0,walk:0,
 const isWalkDay=()=>dd(S.start,today())%7===6;
 const need=l=>40+l*15;
 function addXp(n){S.exp+=n;while(S.lv<100&&S.exp>=need(S.lv)){S.exp-=need(S.lv);S.lv++}if(S.lv>=100){S.lv=100;S.exp=0}}
+const dayAdd=(k,n)=>{const d=new Date(k+'T12:00:00');d.setDate(d.getDate()+n);return d.toLocaleDateString('sv')};
+function streak(){const ok=k=>{const x=S.days[k];return x&&x.done&&!x.gave};let k=today();if(!ok(k))k=dayAdd(k,-1);let n=0;while(ok(k)&&n<3650){n++;k=dayAdd(k,-1)}return n}
 function loseLv(n,why){S.lv=Math.max(1,S.lv-n);S.exp=0;return why}
 // ===== 시작: 접속 보상/패널티 =====
 function enter(){let msg=[];const t=today();
  // 닉네임이 '하준'이면 골드 최대 + 99레벨 (처음 한 번만 지급)
  if(S.name==='하준'&&!S.perk){S.perk=1;S.gold=GOLD_MAX;S.lv=99;S.exp=0;msg.push('🎁 특별 보상! 골드 최대, Lv.99로 시작해요.')}
  if(S.last!==t){
-  if(S.last){const gap=dd(S.last,t)-1;if(gap>0){loseLv(gap);msg.push(`${gap}일 접속하지 않아 레벨이 ${gap} 내려갔어요.`)}
-   const y=S.days[S.last];if(y&&y.start&&!y.done){loseLv(1);msg.push('어제 미션을 끝내지 못해 레벨이 1 내려갔어요.')}}
+  // 쉬었다 돌아와도 레벨은 그대로예요. 다시 온 것 자체를 반겨 줘요.
+  if(S.last){const gap=dd(S.last,t)-1;if(gap>0){S.gold+=30;msg.push(`${gap+1}일 만이에요. 다시 와줘서 반가워요! 환영 보너스 +30G`)}}
   S.gold+=50;msg.push('접속 보상 +50G');S.last=t}
  D();save();return msg}
 // ===== 캐릭터 엔진 (Canvas 벡터 + 가벼운 애니메이션) =====
@@ -764,7 +766,7 @@ function go(t){if(!TABS.includes(t))return;if(document.getElementById('wo')){woC
 function ring(p){const r=26,c=2*Math.PI*r;return `<svg class="ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="${r}" class="ring-bg"/><circle cx="32" cy="32" r="${r}" class="ring-fg" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-p)}"/></svg>`}
 function greet(){const h=new Date().getHours();return h<6?'고요한 새벽이에요':h<12?'좋은 아침이에요':h<18?'좋은 오후예요':'편안한 저녁이에요'}
 function vMission(){const d=D(),v=document.getElementById('v'),walk=isWalkDay(),EX=EXl();
- const exDone=d.ex.every((s,i)=>s>=EX[i][1]),workDone=exDone,walkOk=!walk||d.walk>=600,chatOk=d.chat>=1;
+ const exDone=d.ex.every((s,i)=>s>=EX[i][1]),workDone=exDone||!!d.rest,walkOk=!walk||d.walk>=600,chatOk=d.chat>=1;
  const step=!d.start?1:(!workDone?2:(!chatOk?3:4));
  const total=EX.length+1+(walk?1:0),got=EX.filter((e,i)=>d.ex[i]>=e[1]).length+(chatOk?1:0)+(walk&&walkOk?1:0),pr=d.done?1:got/total;
  const STEPS=['준비','운동','상담','완료'];
@@ -773,7 +775,7 @@ function vMission(){const d=D(),v=document.getElementById('v'),walk=isWalkDay(),
  v.innerHTML=`
  <section class="hero">
   <div class="hero-tx">
-   <p class="eyebrow">${greet()}, ${escHTML(S.name)}님</p>
+   <p class="eyebrow">${greet()}, ${escHTML(S.name)}님${streak()?` <span class="pill streak">🔥 ${streak()}일 연속</span>`:''}</p>
    <h1>오늘은 <em>${d.part}</em> 운동<br>함께 해봐요 ${PT[d.part].e}</h1>
    <p class="sub">${PT[d.part].d}</p>
   </div>
@@ -799,7 +801,7 @@ function vMission(){const d=D(),v=document.getElementById('v'),walk=isWalkDay(),
    <li class="task ${chatOk?'done':''}"><span class="tk">${chatOk?IC.check:IC.chat}</span><div class="tx"><b>마음 상담 1번</b><small>운동 후 오늘의 기분을 나눠요</small></div><span class="ct">${chatOk?'완료':'0<i>/1</i>'}</span></li>
   </ul>
   <p class="note">불편하면 바로 멈추고, 편안한 범위에서만 움직여요.</p>
-  ${d.start&&!d.done?`<button class="btn ghost block sm" onclick="giveUp()">오늘은 쉬어갈래요 (Lv −1)</button>`:''}
+  ${d.start&&!d.done?`<button class="btn ghost block sm" onclick="giveUp()">오늘은 쉬어갈래요</button>`:''}
  </section>
  ${d.start&&workDone&&!d.done?`<section class="card" id="counsel">
   <div class="card-h"><h2>마음 상담</h2><span class="pill ${chatOk?'':'accent'}">${chatOk?'미션 달성 ✔':'Step 3'}</span></div>
@@ -827,9 +829,9 @@ function vAvatar(){const v=document.getElementById('v');
  renderLayerControls();
  const st=document.getElementById('layerStatus');if(st&&layerPack){const n=Object.values(layerPack.slots).reduce((a,b)=>a+b.length,0);st.textContent=`레이어 순서: 기본 몸 → 옷 → 헤어 → 표정 → 액세서리 · 전체 파츠 ${n}개`}}
 function startM(){D().start=1;save();R()}
-function openWorkout(){audioUnlock();const d=D();if(!d.start){d.start=1;save()}woMount();}
-function giveUp(){if(!confirm('포기하면 레벨이 1 내려가요. 괜찮을까요?'))return;D().done=1;D().gave=1;loseLv(1);save();stopCam();R(['괜찮아요. 내일 다시 해봐요. 오늘 여기까지 온 것도 대단해요.'])}
-function finish(){const d=D();d.done=1;S.gold+=100;addXp(60);save();R(['미션 완료! +100G, +60EXP'])}
+function openWorkout(){audioUnlock();if(voiceCoach)speakNow('운동을 준비할게요.');const d=D();if(!d.start){d.start=1;save()}woMount();}
+function giveUp(){if(!confirm('오늘은 쉬어갈까요? 레벨은 그대로이고, 연속 기록만 오늘 쉬어가요.'))return;D().done=1;D().gave=1;save();stopCam();R(['괜찮아요. 쉬는 것도 회복의 일부예요. 내일 다시 만나요 💜'])}
+function finish(){const d=D();d.done=1;const g=d.rest?50:100,x=d.rest?30:60;S.gold+=g;addXp(x);save();R([`미션 완료! +${g}G, +${x}EXP`+(d.rest?' (몸 상태에 맞춰 쉬어간 날)':'')])}
 // ===== 카메라 운동 인식 (관절 실시간 표시) =====
 let PL=null,HL=null,VM=null,VL=null,handInfo=null,raf=null,lastT=0,X={i:-2,s:-1,t:0,n:0,l:-9},SM=null,voiceLast='',voiceAt=0;let voiceCoach=true;try{voiceCoach=localStorage.getItem('rehab_voice')!=='0'}catch(e){}
 const setMsg=t=>{const s=document.getElementById('cs');if(s)s.textContent=t};
@@ -841,8 +843,12 @@ const cur=()=>{const d=D(),w=d.warm||[];
  const i=d.ex.findIndex((s,k)=>s<d.tg[k]);if(i<0)return null;const p=POOL.find(q=>q.id===d.ids[i]);return{i,key:'e'+i,p,n:p.n,t:d.tg[i],h:p.h,c:d.ex[i]}};
 function skipWarm(){const d=D();d.warm=WARM.map(w=>w.t);save();toast('준비 운동을 건너뛰었어요');showRc();const e=cur();if(e&&voiceCoach)speakNow(e.n+'. '+e.h)}
 // ===== 소리·진동·카운트다운 =====
-let AC=null;
-function audioUnlock(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume()}catch(e){}}
+let AC=null,spUnlocked=false,wakeLk=null;
+async function keepAwake(on){try{if(on){if(!wakeLk&&'wakeLock'in navigator&&document.visibilityState==='visible'){wakeLk=await navigator.wakeLock.request('screen');wakeLk.addEventListener('release',()=>{wakeLk=null})}}else if(wakeLk){const w=wakeLk;wakeLk=null;await w.release()}}catch(e){wakeLk=null}}
+// 아이폰(사파리)은 버튼을 누른 그 순간에만 음성을 허락해요. 첫 터치 때 소리 없는 음성으로 미리 깨워 둬요.
+function speechUnlock(){if(spUnlocked||!('speechSynthesis'in window))return;try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;u.lang='ko-KR';speechSynthesis.speak(u);spUnlocked=true}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(!document.getElementById('wo'))return;if(document.visibilityState==='visible'){if(stream)keepAwake(true)}else if(stream&&!woPaused)pauseWo('bg')});
+function audioUnlock(){speechUnlock();try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume()}catch(e){}}
 function beep(f,d){if(!AC)return;try{const t=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(AC.destination);o.start(t);o.stop(t+d+.03)}catch(e){}}
 const vib=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
 const KN=['영','하나','둘','셋','넷','다섯','여섯','일곱','여덟','아홉','열','열하나','열둘','열셋','열넷','열다섯','열여섯','열일곱','열여덟','열아홉','스물'];
@@ -883,6 +889,7 @@ function woMount(){if(document.getElementById('wo'))return;const e=cur();if(!e){
  w.innerHTML=`<div class="vw" id="vw"><video id="vid" playsinline muted autoplay></video><canvas id="ov" class="ov"></canvas><div class="wo-cd" id="woCd" aria-live="assertive"></div>
   <div class="vw-empty" id="woEmpty">${IC.cam}<span>카메라를 준비하고 있어요</span></div></div>
  <canvas id="tmp" width="64" height="48" class="hide"></canvas>
+ <div class="wo-pause" id="woPause" role="dialog" aria-label="일시정지" hidden></div>
  <header class="wo-top">
   <button class="wo-ic" onclick="woClose()" aria-label="운동 닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <div class="wo-seg" id="woSeg"></div>
@@ -894,7 +901,7 @@ function woMount(){if(document.getElementById('wo'))return;const e=cur();if(!e){
    <div class="wo-row"><div class="wo-tx"><small id="woNeed"></small><h2 id="woName"></h2></div><div class="wo-cnt"><b id="woNum">0</b><span id="woTgt"></span></div></div>
    <p class="wo-hint" id="hint"></p>
    <p class="wo-msg" id="cs">카메라를 켜는 중…</p>
-   <div class="wo-act"><button class="btn glass" onclick="openGuide()">📖 안내문 보기</button><button class="btn glass sm" onclick="demoTick()" title="인식이 안 될 때 직접 1회 추가">＋1회</button><button class="btn glass sm" id="woSkip" onclick="skipWarm()" hidden>건너뛰기</button></div>
+   <div class="wo-act"><button class="btn glass" onclick="pauseWo()" aria-label="잠깐 쉬기">⏸ 쉬기</button><button class="btn glass" onclick="openGuide()">📖 안내문</button><button class="btn glass sm" onclick="demoTick()" title="인식이 안 될 때 직접 1회 추가">＋1회</button><button class="btn glass sm" id="woSkip" onclick="skipWarm()" hidden>건너뛰기</button></div>
   </div>
  </div>
  <div class="sheet-bg" id="woGuideBg" onclick="closeGuide()"></div>
@@ -903,7 +910,21 @@ function woMount(){if(document.getElementById('wo'))return;const e=cur();if(!e){
  const vid=document.getElementById('vid');vid.addEventListener('playing',()=>{const x=document.getElementById('woEmpty');if(x)x.remove()});
  coachBtn();showRc();
  if(voiceCoach)cam();else openGuide(true)}
-function woClose(done){stopCam();if('speechSynthesis'in window)speechSynthesis.cancel();const w=document.getElementById('wo');if(w)w.remove();document.body.classList.remove('wo-open');R(done?['🎉 오늘 운동을 모두 마쳤어요! 이제 마음 상담을 해볼까요?']:null)}
+let woPaused=false;
+const PAIN=['목','어깨','허리','팔·손목','무릎','발목','어지러워요','숨이 차요','그냥 지쳤어요'];
+function pauseWo(why){if(!document.getElementById('wo'))return;woPaused=true;cancelAnimationFrame(raf);raf=null;if('speechSynthesis'in window)speechSynthesis.cancel();cdShow('');frameState('');
+ const d=D(),P=document.getElementById('woPause');d.pain=d.pain||[];
+ P.innerHTML=`<div class="wo-pause-card"><p class="eyebrow">${why==='bg'?'다른 화면으로 나가서 멈췄어요':'잠깐 쉬어요'}</p><h2>몸은 괜찮나요?</h2>
+  <p class="mu">불편한 곳이 있으면 눌러 주세요. 오늘 기록에 남겨요. (여러 개 선택 가능)</p>
+  <div class="chips">${PAIN.map(x=>`<button type="button" class="chip ${d.pain.includes(x)?'on':''}" onclick="togglePain(this,'${x}')">${x}</button>`).join('')}</div>
+  <p class="guide-safe">통증이 심하거나 쉬어도 계속되면 운동을 멈추고 의료 전문가와 상담하세요.</p>
+  <div class="btn-row two"><button class="btn soft" onclick="restToday()">오늘은 여기까지</button><button class="btn primary" onclick="resumeWo()">▶ 다시 하기</button></div></div>`;
+ P.hidden=false;keepAwake(false)}
+function togglePain(b,x){const d=D();d.pain=d.pain||[];const i=d.pain.indexOf(x);if(i<0)d.pain.push(x);else d.pain.splice(i,1);b.classList.toggle('on',i<0);save()}
+function resumeWo(){audioUnlock();const P=document.getElementById('woPause');if(P)P.hidden=true;woPaused=false;const e=cur();if(!e)return woClose(true);gateReset(e);
+ if(stream&&PL){keepAwake(true);setMsg('다시 자리를 잡아 주세요. 준비되면 3, 2, 1 하고 시작해요.');if(voiceCoach)speakNow('다시 시작할게요. 자리를 잡아 주세요.');loop()}else cam()}
+function restToday(){const d=D();d.rest=1;save();woPaused=false;woClose();R(['무리하지 않은 것도 잘한 선택이에요. 오늘 몸 상태를 상담에서 이야기해 볼까요?'])}
+function woClose(done){woPaused=false;stopCam();if('speechSynthesis'in window)speechSynthesis.cancel();const w=document.getElementById('wo');if(w)w.remove();document.body.classList.remove('wo-open');R(done?['🎉 오늘 운동을 모두 마쳤어요! 이제 마음 상담을 해볼까요?']:null)}
 function coachBtn(){const b=document.getElementById('voiceToggle');if(!b)return;b.classList.toggle('off',!voiceCoach);
  b.innerHTML=voiceCoach?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>'}
 function fillGuide(first){const g=document.getElementById('woGuide'),e=cur();if(!g||!e)return;const EX=EXl();
@@ -922,7 +943,7 @@ function openGuide(first){fillGuide(first);document.getElementById('woGuide')?.c
 function closeGuide(go){audioUnlock();document.getElementById('woGuide')?.classList.remove('show');document.getElementById('woGuideBg')?.classList.remove('show');if(go&&!stream)cam()}
 function speakGuide(){const e=cur();if(!e||!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(`${e.n}. ${e.h}. ${e.t}회 해볼게요.`);u.lang='ko-KR';u.rate=.92;speechSynthesis.speak(u)}
 async function cam(){const v=document.getElementById('vid');setMsg('카메라를 켜는 중…');
- try{stream=await navigator.mediaDevices.getUserMedia({video:innerHeight>innerWidth?{facingMode:'user',width:{ideal:480},height:{ideal:640}}:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});v.srcObject=stream;await v.play()}
+ try{stream=await navigator.mediaDevices.getUserMedia({video:innerHeight>innerWidth?{facingMode:'user',width:{ideal:480},height:{ideal:640}}:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});v.srcObject=stream;await v.play();keepAwake(true)}
  catch(e){return setMsg(!navigator.mediaDevices?'이 화면에서는 카메라를 쓸 수 없어요. 파일을 크롬/사파리에서 직접 열거나 https 주소로 열어주세요.':e.name==='NotAllowedError'?'카메라 권한이 막혀 있어요. 주소창 왼쪽 자물쇠 → 카메라 허용 후 새로고침해 주세요.':e.name==='NotFoundError'?'카메라를 찾지 못했어요.':e.name==='NotReadableError'?'다른 앱이 카메라를 쓰고 있어요. 닫고 다시 눌러주세요.':'카메라를 켜지 못했어요 ('+e.name+'). 아래 직접 체크 버튼을 써주세요.')}
  showRc();setMsg('몸 인식 모델을 불러오는 중… (처음엔 몇 초 걸려요)');
  try{if(!VM){const B='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';VM=await import(B+'/vision_bundle.mjs');VL=await VM.FilesetResolver.forVisionTasks(B+'/wasm')}if(!PL){const B='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',M=VM,F=VL;const mk=d=>M.PoseLandmarker.createFromOptions(F,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',delegate:d},runningMode:'VIDEO',numPoses:1,minPoseDetectionConfidence:.55,minPosePresenceConfidence:.55,minTrackingConfidence:.55});try{PL=await mk('GPU')}catch(e){PL=await mk('CPU')}}
@@ -959,7 +980,7 @@ function wristHandPose(Hs,X,n){if(!Hs||!Hs.length){if(n-(X.lastHand||0)>1500)X.h
  if(fired&&n-(X.handFire||0)>700){X.handFire=n;X.handPulseUntil=n+450;Object.values(X.hp).forEach(t=>t.flips=0);X.half=false}
  return n<(X.handPulseUntil||0)?1:0}
 function coachCue(e,m,L){if(!e||e.warm)return '';if(!m)return '몸 전체가 화면에 보이도록 카메라에서 조금 물러나 주세요.';if(e.p.low&&!m.low)return '발끝까지 화면에 들어오도록 조금 뒤로 가 주세요.';if(e.p.hip&&!m.hip)return '골반과 허리가 보이도록 조금 뒤로 가 주세요.';if(e.p.arm&&m.pa<95)return '팔꿈치가 너무 많이 접혔어요. 편안한 범위에서 천천히 움직여요.';if(e.p.id==='half'||e.p.id==='sq'||e.p.id==='sumo'){if(Math.abs(L[25].x-L[27].x)>.18||Math.abs(L[26].x-L[28].x)>.18)return '무릎이 발끝 방향을 향하도록 맞춰 주세요.';return '허리를 편안하게 세우고, 무릎이 발끝을 향하게 앉아 주세요.'}if(e.p.id==='knee'||e.p.id==='ke')return '상체를 세우고 좌우를 번갈아 천천히 움직여요.';if(e.p.id==='hinge')return '등을 둥글게 말지 말고, 엉덩이를 뒤로 보내며 숙여요.';if(e.p.id==='curl'){if(Math.abs(L[13].x-L[11].x)>.16||Math.abs(L[14].x-L[12].x)>.16)return '팔꿈치를 옆구리 가까이에 두고 팔을 접어 주세요.';return '팔꿈치를 몸 가까이에 두고 천천히 접었다 펴요.'}if(e.p.id==='wpu'||e.p.id==='kpu'||e.p.id==='pu')return '몸통을 곧게 유지하고, 무리하지 않는 범위에서 팔을 굽혀요.';if(e.p.id==='neck')return '어깨 힘을 빼고 목만 좌우로 천천히 기울여요.';if(e.p.id==='bend')return '골반은 정면을 향하게 두고 상체만 부드럽게 기울여요.';if(e.p.id==='twist')return '허리를 과하게 꺾지 말고 배에 힘을 준 채 작게 회전해요.';return '좋아요. 호흡을 멈추지 말고 편안한 범위에서 계속해요.'}
-function loop(){const v=document.getElementById('vid');if(!v||!stream||!PL)return;raf=requestAnimationFrame(loop);
+function loop(){const v=document.getElementById('vid');if(!v||!stream||!PL||woPaused)return;raf=requestAnimationFrame(loop);
  const n=performance.now();if(n-lastT<50||v.readyState<2)return;lastT=n;
  const e=cur(),w=document.getElementById('vw');if(!e)return;if(G.key!==e.key)gateReset(e);
  if(e.p.hand){// 준비 운동: 손가락 인식
@@ -1002,7 +1023,7 @@ function met(L,P){if(![0,11,12].every(i=>ok(L,i)))return null;if(P&&P.up&&!([11,
 function tick(n){const e=cur();if(!e)return;const d=D();if(e.warm){d.warm=d.warm||[];d.warm[e.i]=Math.min(e.t,(d.warm[e.i]||0)+n)}else d.ex[e.i]=Math.min(e.t,d.ex[e.i]+n);const nx=cur();
  const c=Math.floor(e.warm?d.warm[e.i]:d.ex[e.i]);repFx(c,c>=e.t);
  if(!nx){save();if('speechSynthesis'in window&&voiceCoach){speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('오늘 운동을 모두 마쳤어요. 정말 잘했어요!');u.lang='ko-KR';speechSynthesis.speak(u)}woClose(true);return}save();showRc();if(nx.key!==e.key){setMsg(`${e.n} 완료! ✔ 다음은 ${nx.n}`);toast(`✔ ${e.n} 완료! 다음은 ${nx.n}`);if(voiceCoach)speakNow(`${KN[c]||c}! ${e.n} 완료. 다음은 ${nx.n}. ${nx.p.h||nx.h}`);else openGuide()}}
-function stopCam(){cancelAnimationFrame(raf);G.key='';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+function stopCam(){cancelAnimationFrame(raf);G.key='';keepAwake(false);if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
 // ===== 상담 챗봇 (규칙 기반) =====
 const CB=[[/(불안|무서|두려)/,'불안한 마음이 드는군요. 숨을 4초 들이쉬고 6초 내쉬어 볼까요? 지금 가장 걱정되는 장면은 어떤 거예요?'],
 [/(외롭|혼자)/,'혼자라는 느낌은 정말 힘들죠. 오늘 누군가와 짧게라도 눈을 마주치거나 인사를 해본 적 있나요?'],

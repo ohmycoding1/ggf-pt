@@ -394,3 +394,14 @@ body.wo-open .toast{top:calc(var(--safe-t) + 70px);bottom:auto}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media (min-width:600px){.hero{grid-template-columns:1fr 160px}.hero-av canvas{width:160px}}
 [hidden]{display:none!important}
+
+/* 운동 일시정지 · 통증 기록 */
+.wo-pause{position:absolute;inset:0;z-index:5;display:grid;place-items:end center;padding:16px 12px calc(var(--safe-b,0px) + 16px);background:rgba(9,8,13,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:fade .2s ease both}
+.wo-pause-card{width:100%;max-width:560px;padding:22px 18px;border-radius:24px;background:var(--card);color:var(--ink)}
+.wo-pause-card h2{font-size:22px;font-weight:800;margin:4px 0 6px}
+.wo-pause-card .mu{font-size:14px;color:var(--mu)}
+.wo-pause-card .chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.wo-pause-card .chip{min-height:44px;padding:0 16px;border-radius:999px;border:1.5px solid var(--line-2);background:transparent;color:var(--ink);font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.wo-pause-card .chip.on{border-color:var(--ac);background:var(--ac-soft);color:var(--ac-ink)}
+.wo-pause-card .btn-row{margin-top:14px}
+.pill.streak{margin-left:6px;vertical-align:1px}
